@@ -16,6 +16,8 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 import javax.imageio.spi.ServiceRegistry;
+import java.util.ServiceLoader;
+import com.google.common.util.concurrent.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,17 +35,21 @@ import org.slf4j.LoggerFactory;
  * SPIServiceRegistry(FieldSerializationProviderSpi.class).load(
  * FieldSerializationProviderSpi.class);
  */
-public class SPIServiceRegistry extends ServiceRegistry {
-
+public class SPIServiceRegistry {
   private static final Logger LOGGER = LoggerFactory.getLogger(SPIServiceRegistry.class);
 
   @SuppressWarnings("unchecked")
   public SPIServiceRegistry(final Class<?> category) {
-    super((Iterator) Arrays.asList(category).iterator());
+    // super((Iterator) Arrays.asList(category).iterator());
+    ServiceLoader.load(category);
+
   }
 
   public SPIServiceRegistry(final Iterator<Class<?>> categories) {
-    super(categories);
+    ServiceLoader.load(categories.getClass());
+    while (categories.hasNext()) {
+      ServiceLoader.load(categories.next());
+    }
   }
 
   private static final Set<ClassLoader> ClassLoaders =
@@ -78,7 +84,8 @@ public class SPIServiceRegistry extends ServiceRegistry {
             continue;
           }
           checkset.add(l);
-          spiIT = ServiceRegistry.lookupProviders(service, l);
+          // spiIT = ServiceRegistry.lookupProviders(service, l);
+          spiIT = ServiceLoader.load(service, l).iterator();
         }
         return (spiIT != null) && spiIT.hasNext();
       }

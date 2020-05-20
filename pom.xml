@@ -100,6 +100,7 @@
 		<collections4.version>4.1</collections4.version>
 		<jcommander.version>1.48</jcommander.version>
 		<jackson.version>1.9.13</jackson.version>
+		<jakarta.version>2.3.3</jakarta.version>
 		<fasterxml.jackson.version>2.9.5</fasterxml.jackson.version>
 		<spring-security.version>4.2.7.RELEASE</spring-security.version>
 		<slf4j.version>1.7.21</slf4j.version>
@@ -121,13 +122,13 @@
 		<sonar.jacoco.itReportPath>${jacoco.it.reportPath}</sonar.jacoco.itReportPath>
 		<surefire.report.path>${basedir}/target/surefire-reports</surefire.report.path>
 		<sonar.junit.reportsPath>${surefire.report.path}</sonar.junit.reportsPath>
-		<jacoco.version>0.7.4.201502262128</jacoco.version>
+		<jacoco.version>0.8.5</jacoco.version>
 		<sonar.java.coveragePlugin>jacoco</sonar.java.coveragePlugin>
 		<sonar.dynamicAnalysis>reuseReports</sonar.dynamicAnalysis>
 		<test.args>-XX:CompressedClassSpaceSize=512m -XX:+UseSerialGC -Xms1g
 			-Xmx2g -XX:MaxMetaspaceSize=512m</test.args>
-		<spotbugs.version>3.1.10</spotbugs.version>
-		<spotbugs.omitVisitors>MutableStaticFields,FindReturnRef</spotbugs.omitVisitors>
+		<spotbugs.version>4.0.0</spotbugs.version>
+		<spotbugs.omitVisitors>MutableStaticFields,FindReturnRef,FindNullDeref</spotbugs.omitVisitors>
 		<spotbugs.effort>Max</spotbugs.effort>
 		<spotbugs.threshold>Medium</spotbugs.threshold>
 		<spotbugs.failOnError>true</spotbugs.failOnError>
@@ -854,6 +855,8 @@
 				<artifactId>netty-resolver</artifactId>
 				<version>${netty.version}</version>
 			</dependency>
+
+
 		</dependencies>
 	</dependencyManagement>
 	<!-- Dependencies used across ALL projects -->
@@ -867,6 +870,13 @@
 			<artifactId>junit</artifactId>
 			<version>${junit.version}</version>
 			<scope>test</scope>
+		</dependency>
+		<!-- https://mvnrepository.com/artifact/javax.annotation/javax.annotation-api -->
+		<dependency>
+			<groupId>javax.annotation</groupId>
+			<artifactId>javax.annotation-api</artifactId>
+			<version>1.3.2</version>
+			<scope>provided</scope>
 		</dependency>
 	</dependencies>
 	<build>

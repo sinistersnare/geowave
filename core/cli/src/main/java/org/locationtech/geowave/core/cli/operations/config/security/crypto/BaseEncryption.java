@@ -9,6 +9,7 @@
 /** */
 package org.locationtech.geowave.core.cli.operations.config.security.crypto;
 
+
 import java.io.File;
 import java.security.Key;
 import java.util.regex.Matcher;
@@ -18,7 +19,7 @@ import javax.crypto.SecretKey;
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
-import javax.xml.bind.DatatypeConverter;
+import java.util.Base64;
 import org.apache.commons.codec.DecoderException;
 import org.apache.commons.codec.binary.Hex;
 import org.locationtech.geowave.core.cli.operations.config.options.ConfigOptions;
@@ -227,11 +228,12 @@ public abstract class BaseEncryption {
    * @throws Exception
    */
   private static String generateRandomSecretKey() throws Exception {
+    Base64.Encoder enc = Base64.getEncoder();
     final KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
     keyGenerator.init(256);
     final SecretKey secretKey = keyGenerator.generateKey();
     final byte[] encoded = secretKey.getEncoded();
-    return DatatypeConverter.printBase64Binary(encoded);
+    return enc.encodeToString(encoded);
   }
 
   /**
