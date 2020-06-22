@@ -17,8 +17,8 @@ import java.util.Map;
 import org.apache.accumulo.core.conf.Property;
 import org.apache.accumulo.gc.SimpleGarbageCollector;
 import org.apache.accumulo.master.Master;
-import org.apache.accumulo.minicluster.impl.MiniAccumuloClusterImpl;
-import org.apache.accumulo.minicluster.impl.MiniAccumuloConfigImpl;
+import org.apache.accumulo.miniclusterImpl.MiniAccumuloClusterImpl;
+import org.apache.accumulo.miniclusterImpl.MiniAccumuloConfigImpl;
 import org.apache.accumulo.server.init.Initialize;
 import org.apache.accumulo.tserver.TabletServer;
 import org.apache.commons.io.FileUtils;
@@ -146,7 +146,7 @@ public class AccumuloStoreTestEnvironment extends StoreTestEnvironment {
     args.add("--password");
     args.add(config.getRootPassword());
 
-    final Process initProcess =
+    final MiniAccumuloClusterImpl.ProcessInfo initProcess =
         miniAccumulo.exec(Initialize.class, jvmArgs, args.toArray(new String[0]));
 
     cleanup.add(initProcess);

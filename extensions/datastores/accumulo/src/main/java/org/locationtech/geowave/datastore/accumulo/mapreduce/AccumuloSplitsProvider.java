@@ -19,7 +19,7 @@ import java.util.Map.Entry;
 import java.util.TreeSet;
 import org.apache.accumulo.core.data.Range;
 import org.apache.accumulo.core.data.TabletId;
-import org.apache.accumulo.core.data.impl.KeyExtent;
+// import org.apache.accumulo.core.data.impl.KeyExtent;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.hadoop.io.Text;
@@ -184,8 +184,8 @@ public class AccumuloSplitsProvider extends SplitsProvider {
   }
 
   /** Returns data structure to be filled by binnedRanges Extracted out to facilitate testing */
-  public Map<String, Map<KeyExtent, List<Range>>> getBinnedRangesStructure() {
-    final Map<String, Map<KeyExtent, List<Range>>> tserverBinnedRanges = new HashMap<>();
+  public Map<String, Map<TabletId, List<Range>>> getBinnedRangesStructure() {
+    final Map<String, Map<TabletId, List<Range>>> tserverBinnedRanges = new HashMap<>();
     return tserverBinnedRanges;
   }
 

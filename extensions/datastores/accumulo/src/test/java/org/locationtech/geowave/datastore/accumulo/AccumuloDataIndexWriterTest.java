@@ -15,6 +15,8 @@ import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.Connector;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.mock.MockInstance;
+import org.apache.accumulo.miniclusterImpl.MiniAccumuloClusterImpl;
+import org.apache.accumulo.minicluster.MiniAccumuloCluster;
 import org.apache.accumulo.core.client.security.tokens.PasswordToken;
 import org.junit.Assert;
 import org.junit.Before;
@@ -43,6 +45,8 @@ public class AccumuloDataIndexWriterTest {
 
   @Before
   public void setUp() {
+    final MiniAccumuloCluster miniCluster = new MiniAccumuloCluster();
+
     final MockInstance mockInstance = new MockInstance();
     Connector mockConnector = null;
     try {

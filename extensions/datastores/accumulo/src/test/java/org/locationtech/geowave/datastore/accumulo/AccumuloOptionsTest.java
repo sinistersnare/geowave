@@ -84,6 +84,7 @@ public class AccumuloOptionsTest {
     final MockInstance mockInstance = new MockInstance();
     Connector mockConnector = null;
     try {
+
       mockConnector = mockInstance.getConnector("root", new PasswordToken(new byte[0]));
     } catch (AccumuloException | AccumuloSecurityException e) {
       LOGGER.error("Failed to create mock accumulo connection", e);
