@@ -12,15 +12,15 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.apache.accumulo.core.client.AccumuloException;
-import org.apache.accumulo.core.client.AccumuloSecurityException;
-import org.apache.accumulo.core.client.Connector;
-import org.apache.accumulo.core.client.mock.MockInstance;
+
 import org.apache.accumulo.core.client.security.tokens.PasswordToken;
+import org.apache.accumulo.minicluster.MiniAccumuloCluster;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -94,17 +94,11 @@ public class AccumuloDataStoreStatsTest {
   AccumuloDataStore mockDataStore;
 
   @Before
-  public void setUp() throws AccumuloException, AccumuloSecurityException {
-    final MockInstance mockInstance = new MockInstance();
-    Connector mockConnector = null;
-    try {
-      mockConnector = mockInstance.getConnector("root", new PasswordToken(new byte[0]));
-    } catch (AccumuloException | AccumuloSecurityException e) {
-      LOGGER.error("Failed to create mock accumulo connection", e);
-    }
+  public void setUp() throws IOException {
     final AccumuloOptions options = new AccumuloOptions();
-
-    accumuloOperations = new AccumuloOperations(mockConnector, options);
+    Path accumuloDir = Files.createTempDirectory("accumulo");
+    final MiniAccumuloCluster client = new MiniAccumuloCluster(accumuloDir.toFile(), "");
+    accumuloOperations = new AccumuloOperations(client.createAccumuloClient("root", new PasswordToken(new byte[0])), options);
 
     statsStore = new DataStatisticsStoreImpl(accumuloOperations, options);
 
@@ -114,12 +108,7 @@ public class AccumuloDataStoreStatsTest {
   }
 
   public static final VisibilityWriter<TestGeometry> visWriterAAA =
-      new VisibilityWriter<TestGeometry>() {
-
-        @Override
-        public FieldVisibilityHandler<TestGeometry, Object> getFieldVisibilityHandler(
-            final String fieldId) {
-          return new FieldVisibilityHandler<TestGeometry, Object>() {
+          fieldId -> new FieldVisibilityHandler<TestGeometry, Object>() {
             @Override
             public byte[] getVisibility(
                 final TestGeometry rowValue,
@@ -128,16 +117,9 @@ public class AccumuloDataStoreStatsTest {
               return "aaa".getBytes();
             }
           };
-        }
-      };
 
   public static final VisibilityWriter<TestGeometry> visWriterBBB =
-      new VisibilityWriter<TestGeometry>() {
-
-        @Override
-        public FieldVisibilityHandler<TestGeometry, Object> getFieldVisibilityHandler(
-            final String fieldId) {
-          return new FieldVisibilityHandler<TestGeometry, Object>() {
+          fieldId -> new FieldVisibilityHandler<TestGeometry, Object>() {
             @Override
             public byte[] getVisibility(
                 final TestGeometry rowValue,
@@ -146,8 +128,6 @@ public class AccumuloDataStoreStatsTest {
               return "bbb".getBytes();
             }
           };
-        }
-      };
 
   @Test
   public void test() throws IOException {
@@ -155,7 +135,7 @@ public class AccumuloDataStoreStatsTest {
     runtest();
   }
 
-  private void runtest() throws IOException {
+  private void runtest() {
 
     final Index index = new SpatialDimensionalityTypeProvider().createIndex(new SpatialOptions());
     final DataTypeAdapter<TestGeometry> adapter = new TestGeometryAdapter();

@@ -9,15 +9,14 @@
 package org.locationtech.geowave.datastore.accumulo.query;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
-import org.apache.accumulo.core.client.AccumuloException;
-import org.apache.accumulo.core.client.AccumuloSecurityException;
-import org.apache.accumulo.core.client.Connector;
-import org.apache.accumulo.core.client.mock.MockInstance;
 import org.apache.accumulo.core.client.security.tokens.PasswordToken;
+import org.apache.accumulo.minicluster.MiniAccumuloCluster;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -78,18 +77,17 @@ public class AccumuloRangeQueryTest {
           "test_shape_1");
 
   @Before
-  public void ingestGeometries() throws AccumuloException, AccumuloSecurityException, IOException {
-    final MockInstance mockInstance = new MockInstance();
-    final Connector mockConnector =
-        mockInstance.getConnector("root", new PasswordToken(new byte[0]));
-
+  public void ingestGeometries() throws IOException {
     final AccumuloOptions options = new AccumuloOptions();
-    mockDataStore = new AccumuloDataStore(new AccumuloOperations(mockConnector, options), options);
+    Path accumuloDir = Files.createTempDirectory("accumulo");
+    final MiniAccumuloCluster client = new MiniAccumuloCluster(accumuloDir.toFile(), "");
+    AccumuloOperations operations = new AccumuloOperations(client.createAccumuloClient("root", new PasswordToken(new byte[0])), options);
+    mockDataStore = new AccumuloDataStore(operations, options);
 
     index = new SpatialDimensionalityTypeProvider().createIndex(new SpatialOptions());
     adapter = new TestGeometryAdapter();
     mockDataStore.addType(adapter, index);
-    try (Writer writer = mockDataStore.createWriter(adapter.getTypeName())) {
+    try (Writer<TestGeometry> writer = mockDataStore.createWriter(adapter.getTypeName())) {
       writer.write(testdata);
     }
   }

@@ -13,13 +13,12 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
-import org.apache.accumulo.core.client.AccumuloException;
-import org.apache.accumulo.core.client.AccumuloSecurityException;
-import org.apache.accumulo.core.client.Connector;
-import org.apache.accumulo.core.client.mock.MockInstance;
 import org.apache.accumulo.core.client.security.tokens.PasswordToken;
+import org.apache.accumulo.minicluster.MiniAccumuloCluster;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.After;
 import org.junit.Before;
@@ -99,10 +98,10 @@ public class DeleteWriterTest {
 
   @Before
   public void setUp()
-      throws IOException, InterruptedException, AccumuloException, AccumuloSecurityException {
-    Connector mockConnector;
-    mockConnector = new MockInstance().getConnector("root", new PasswordToken(new byte[0]));
-    operations = new AccumuloOperations(mockConnector, options);
+      throws IOException {
+    Path accumuloDir = Files.createTempDirectory("accumulo");
+    final MiniAccumuloCluster client = new MiniAccumuloCluster(accumuloDir.toFile(), "");
+    operations = new AccumuloOperations(client.createAccumuloClient("root", new PasswordToken(new byte[0])), options);
     operations.createTable("test_table", true, true);
     mockDataStore = new AccumuloDataStore(operations, options);
 

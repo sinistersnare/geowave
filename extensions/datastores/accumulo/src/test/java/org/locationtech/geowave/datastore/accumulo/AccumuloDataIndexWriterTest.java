@@ -9,13 +9,10 @@
 package org.locationtech.geowave.datastore.accumulo;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Iterator;
-import org.apache.accumulo.core.client.AccumuloException;
-import org.apache.accumulo.core.client.AccumuloSecurityException;
-import org.apache.accumulo.core.client.Connector;
 import org.apache.accumulo.core.client.TableNotFoundException;
-import org.apache.accumulo.core.client.mock.MockInstance;
-import org.apache.accumulo.miniclusterImpl.MiniAccumuloClusterImpl;
 import org.apache.accumulo.minicluster.MiniAccumuloCluster;
 import org.apache.accumulo.core.client.security.tokens.PasswordToken;
 import org.junit.Assert;
@@ -44,17 +41,11 @@ public class AccumuloDataIndexWriterTest {
 
 
   @Before
-  public void setUp() {
-    final MiniAccumuloCluster miniCluster = new MiniAccumuloCluster();
-
-    final MockInstance mockInstance = new MockInstance();
-    Connector mockConnector = null;
-    try {
-      mockConnector = mockInstance.getConnector("root", new PasswordToken(new byte[0]));
-    } catch (AccumuloException | AccumuloSecurityException e) {
-      LOGGER.error("Failed to create mock accumulo connection", e);
-    }
-    accumuloOperations = new AccumuloOperations(mockConnector, accumuloOptions);
+  public void setUp() throws IOException {
+    final AccumuloOptions options = new AccumuloOptions();
+    Path accumuloDir = Files.createTempDirectory("accumulo");
+    final MiniAccumuloCluster client = new MiniAccumuloCluster(accumuloDir.toFile(), "");
+    accumuloOperations = new AccumuloOperations(client.createAccumuloClient("root", new PasswordToken(new byte[0])), options);
   }
 
   @Test

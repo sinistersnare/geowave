@@ -9,18 +9,19 @@
 package org.locationtech.geowave.datastore.accumulo;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import org.apache.accumulo.core.client.AccumuloException;
-import org.apache.accumulo.core.client.AccumuloSecurityException;
-import org.apache.accumulo.core.client.Connector;
 import org.apache.accumulo.core.client.TableNotFoundException;
-import org.apache.accumulo.core.client.mock.MockInstance;
 import org.apache.accumulo.core.client.security.tokens.PasswordToken;
+import org.apache.accumulo.minicluster.MiniAccumuloCluster;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.Before;
 import org.junit.Test;
@@ -80,17 +81,11 @@ public class AccumuloOptionsTest {
   AccumuloDataStore mockDataStore;
 
   @Before
-  public void setUp() {
-    final MockInstance mockInstance = new MockInstance();
-    Connector mockConnector = null;
-    try {
-
-      mockConnector = mockInstance.getConnector("root", new PasswordToken(new byte[0]));
-    } catch (AccumuloException | AccumuloSecurityException e) {
-      LOGGER.error("Failed to create mock accumulo connection", e);
-    }
+  public void setUp() throws IOException {
     final AccumuloOptions options = new AccumuloOptions();
-    accumuloOperations = new AccumuloOperations(mockConnector, accumuloOptions);
+    Path accumuloDir = Files.createTempDirectory("accumulo");
+    final MiniAccumuloCluster client = new MiniAccumuloCluster(accumuloDir.toFile(), "");
+    accumuloOperations = new AccumuloOperations(client.createAccumuloClient("root", new PasswordToken(new byte[0])), options);
 
     indexStore = new IndexStoreImpl(accumuloOperations, accumuloOptions);
 
@@ -128,7 +123,7 @@ public class AccumuloOptionsTest {
       // as we have chosen to persist the index, we will see the index
       // entry
       // in the index store
-      assertEquals(true, indexStore.indexExists(index.getName()));
+      assertTrue(indexStore.indexExists(index.getName()));
 
       // of course, the point is actually stored in this case
       assertEquals("test_pt_2", geom2.id);
@@ -157,7 +152,7 @@ public class AccumuloOptionsTest {
       try {
         // as we are not using locality groups, we expect that this will
         // return false
-        assertEquals(false, accumuloOperations.localityGroupExists(tableName, typeName));
+        assertFalse(accumuloOperations.localityGroupExists(tableName, typeName));
       } catch (final AccumuloException | TableNotFoundException e) {
         LOGGER.error("Locality Group check failed", e);
       }

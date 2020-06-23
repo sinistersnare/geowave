@@ -8,11 +8,7 @@
  */
 package org.locationtech.geowave.datastore.accumulo.cli;
 
-import java.io.IOException;
-import org.apache.accumulo.core.client.AccumuloException;
-import org.apache.accumulo.core.client.AccumuloSecurityException;
-import org.apache.accumulo.core.client.Connector;
-import org.apache.accumulo.core.client.TableNotFoundException;
+import org.apache.accumulo.core.client.AccumuloClient;
 import org.locationtech.geowave.core.cli.annotations.GeowaveOperation;
 import org.locationtech.geowave.core.cli.api.Command;
 import org.locationtech.geowave.core.store.api.Index;
@@ -36,17 +32,11 @@ public class PreSplitPartitionIdCommand extends AbstractSplitsCommand implements
 
       @Override
       protected boolean setSplits(
-          final Connector connector,
+          final AccumuloClient connector,
           final Index index,
           final String namespace,
           final long number) {
-        try {
-          AccumuloUtils.setSplitsByRandomPartitions(connector, namespace, index, (int) number);
-        } catch (AccumuloException | AccumuloSecurityException | IOException
-            | TableNotFoundException e) {
-          LOGGER.error("Error pre-splitting", e);
-          return false;
-        }
+        AccumuloUtils.setSplitsByRandomPartitions(connector, namespace, index, (int) number);
         return true;
       }
 

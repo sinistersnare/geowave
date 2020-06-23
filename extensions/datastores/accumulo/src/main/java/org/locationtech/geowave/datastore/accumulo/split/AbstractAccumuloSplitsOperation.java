@@ -8,9 +8,7 @@
  */
 package org.locationtech.geowave.datastore.accumulo.split;
 
-import org.apache.accumulo.core.client.AccumuloException;
-import org.apache.accumulo.core.client.AccumuloSecurityException;
-import org.apache.accumulo.core.client.Connector;
+import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.commons.cli.ParseException;
 import org.locationtech.geowave.core.store.CloseableIterator;
 import org.locationtech.geowave.core.store.api.Index;
@@ -37,48 +35,43 @@ public abstract class AbstractAccumuloSplitsOperation {
 
   public boolean runOperation() throws ParseException {
 
-    try {
-      final IndexStore indexStore = storeOptions.createIndexStore();
+    final IndexStore indexStore = storeOptions.createIndexStore();
 
-      final AccumuloRequiredOptions options =
-          (AccumuloRequiredOptions) storeOptions.getFactoryOptions();
-      final AccumuloOperations operations = AccumuloOperations.createOperations(options);
+    final AccumuloRequiredOptions options =
+        (AccumuloRequiredOptions) storeOptions.getFactoryOptions();
+    final AccumuloOperations operations = AccumuloOperations.createOperations(options);
 
-      final Connector connector = operations.getConnector();
-      final String namespace = options.getGeoWaveNamespace();
-      final long number = splitOptions.getNumber();
-      if (splitOptions.getIndexName() == null) {
-        boolean retVal = false;
-        try (CloseableIterator<Index> indices = indexStore.getIndices()) {
-          if (indices.hasNext()) {
-            retVal = true;
-          }
-          while (indices.hasNext()) {
-            final Index index = indices.next();
-            if (!setSplits(connector, index, namespace, number)) {
-              retVal = false;
-            }
+    final AccumuloClient connector = operations.getClient();
+    final String namespace = options.getGeoWaveNamespace();
+    final long number = splitOptions.getNumber();
+    if (splitOptions.getIndexName() == null) {
+      boolean retVal = false;
+      try (CloseableIterator<Index> indices = indexStore.getIndices()) {
+        if (indices.hasNext()) {
+          retVal = true;
+        }
+        while (indices.hasNext()) {
+          final Index index = indices.next();
+          if (!setSplits(connector, index, namespace, number)) {
+            retVal = false;
           }
         }
-        if (!retVal) {
-          LOGGER.error("no indices were successfully split, try providing an indexId");
-        }
-        return retVal;
-      } else if (isPreSplit()) {
-        setSplits(connector, new NullIndex(splitOptions.getIndexName()), namespace, number);
-      } else {
-        final Index index = indexStore.getIndex(splitOptions.getIndexName());
-        if (index == null) {
-          LOGGER.error(
-              "index '"
-                  + splitOptions.getIndexName()
-                  + "' does not exist; unable to create splits");
-        }
-        return setSplits(connector, index, namespace, number);
       }
-    } catch (final AccumuloSecurityException | AccumuloException e) {
-      LOGGER.error("unable to create index store", e);
-      return false;
+      if (!retVal) {
+        LOGGER.error("no indices were successfully split, try providing an indexId");
+      }
+      return retVal;
+    } else if (isPreSplit()) {
+      setSplits(connector, new NullIndex(splitOptions.getIndexName()), namespace, number);
+    } else {
+      final Index index = indexStore.getIndex(splitOptions.getIndexName());
+      if (index == null) {
+        LOGGER.error(
+            "index '"
+                + splitOptions.getIndexName()
+                + "' does not exist; unable to create splits");
+      }
+      return setSplits(connector, index, namespace, number);
     }
     return true;
   }
@@ -88,8 +81,8 @@ public abstract class AbstractAccumuloSplitsOperation {
   };
 
   protected abstract boolean setSplits(
-      Connector connector,
-      Index index,
-      String namespace,
-      long number);
+          AccumuloClient connector,
+          Index index,
+          String namespace,
+          long number);
 }

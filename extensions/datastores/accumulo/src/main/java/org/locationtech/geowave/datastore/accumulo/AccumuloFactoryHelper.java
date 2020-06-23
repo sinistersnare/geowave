@@ -28,11 +28,6 @@ public class AccumuloFactoryHelper implements StoreFactoryHelper {
 
   @Override
   public DataStoreOperations createOperations(final StoreFactoryOptions options) {
-    try {
-      return AccumuloOperations.createOperations((AccumuloRequiredOptions) options);
-    } catch (AccumuloException | AccumuloSecurityException e) {
-      LOGGER.error("Unable to create Accumulo operations from config options", e);
-      return null;
-    }
+    return AccumuloOperations.createOperations((AccumuloRequiredOptions) options);
   }
 }

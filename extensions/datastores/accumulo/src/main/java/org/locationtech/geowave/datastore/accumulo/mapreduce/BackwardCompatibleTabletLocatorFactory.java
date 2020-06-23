@@ -12,6 +12,8 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
+
+import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.TableNotFoundException;
@@ -270,7 +272,7 @@ class BackwardCompatibleTabletLocatorFactory {
       final String tableName,
       final TreeSet<Range> ranges)
       throws AccumuloException, AccumuloSecurityException, TableNotFoundException {
-    final Connector conn = operations.getConnector();
+    final AccumuloClient conn = operations.getClient();
     return conn.tableOperations().locate(tableName, ranges);
   }
   /* end[accumulo.api=1.7] */

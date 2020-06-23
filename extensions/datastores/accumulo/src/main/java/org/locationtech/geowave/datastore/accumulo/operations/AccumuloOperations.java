@@ -8,7 +8,6 @@
  */
 package org.locationtech.geowave.datastore.accumulo.operations;
 
-import java.io.Closeable;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -22,11 +21,15 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Properties;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+
+import org.apache.accumulo.core.client.Accumulo;
+import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.BatchDeleter;
@@ -34,8 +37,6 @@ import org.apache.accumulo.core.client.BatchScanner;
 import org.apache.accumulo.core.client.BatchWriter;
 import org.apache.accumulo.core.client.BatchWriterConfig;
 import org.apache.accumulo.core.client.ClientSideIteratorScanner;
-import org.apache.accumulo.core.client.Connector;
-import org.apache.accumulo.core.client.Instance;
 import org.apache.accumulo.core.client.IteratorSetting;
 import org.apache.accumulo.core.client.MutationsRejectedException;
 import org.apache.accumulo.core.client.RowIterator;
@@ -116,7 +117,6 @@ import org.locationtech.geowave.datastore.accumulo.iterators.WholeRowAggregation
 import org.locationtech.geowave.datastore.accumulo.iterators.WholeRowQueryFilterIterator;
 import org.locationtech.geowave.datastore.accumulo.mapreduce.AccumuloSplitsProvider;
 import org.locationtech.geowave.datastore.accumulo.util.AccumuloUtils;
-import org.locationtech.geowave.datastore.accumulo.util.ConnectorPool;
 import org.locationtech.geowave.mapreduce.MapReduceDataStoreOperations;
 import org.locationtech.geowave.mapreduce.splits.GeoWaveRowRange;
 import org.locationtech.geowave.mapreduce.splits.RecordReaderParams;
@@ -144,13 +144,14 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
   private final long byteBufferSize;
   private final String authorization;
   private final String tableNamespace;
-  protected Connector connector;
   private final Map<String, Long> locGrpCache;
   private long cacheTimeoutMillis;
-  private String password;
   private final Map<String, Set<String>> ensuredAuthorizationCache = new HashMap<>();
   private final Map<String, Set<ByteArray>> ensuredPartitionCache = new HashMap<>();
   private final AccumuloOptions options;
+
+  private AccumuloClient client;
+  private String password;
 
   /**
    * This is will create an Accumulo connector based on passed in connection information and
@@ -165,8 +166,6 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
    * @param password The password for the account to establish an Accumulo connector
    * @param tableNamespace An optional string that is prefixed to any of the table names
    * @param options Options for the Accumulo data store
-   * @throws AccumuloException Thrown if a generic exception occurs when establishing a connector
-   * @throws AccumuloSecurityException the credentials passed in are invalid
    */
   public AccumuloOperations(
       final String zookeeperUrl,
@@ -174,43 +173,42 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
       final String userName,
       final String password,
       final String tableNamespace,
-      final AccumuloOptions options) throws AccumuloException, AccumuloSecurityException {
-    this(null, tableNamespace, options);
+      final AccumuloOptions options) {
+    this(DEFAULT_NUM_THREADS, DEFAULT_TIMEOUT_MILLIS, DEFAULT_BYTE_BUFFER_SIZE,
+         DEFAULT_AUTHORIZATION, tableNamespace, null, options);
     this.password = password;
-    connector =
-        ConnectorPool.getInstance().getConnector(zookeeperUrl, instanceName, userName, password);
+
+    Properties props = new Properties();
+    props.put("instance.name", instanceName);
+    props.put("instance.zookeepers", zookeeperUrl);
+    props.put("auth.type", "password");
+    props.put("auth.principal", userName);
+    props.put("auth.token", password);
+    this.client = Accumulo.newClient().from(props).build();
   }
 
   /**
    * This constructor uses reasonable defaults and only requires an Accumulo connector
    *
-   * @param connector The connector to use for all operations
+   * @param client The connector to use for all operations
    * @param options Options for the Accumulo data store
    */
-  public AccumuloOperations(final Connector connector, final AccumuloOptions options) {
-    this(connector, DEFAULT_TABLE_NAMESPACE, options);
+  public AccumuloOperations(final AccumuloClient client, final AccumuloOptions options) {
+    this(client, DEFAULT_TABLE_NAMESPACE, options);
   }
 
   /**
    * This constructor uses reasonable defaults and requires an Accumulo connector and table
    * namespace
    *
-   * @param connector The connector to use for all operations
+   * @param client The connector to use for all operations
    * @param tableNamespace An optional string that is prefixed to any of the table names
    * @param options Options for the Accumulo data store
    */
-  public AccumuloOperations(
-      final Connector connector,
-      final String tableNamespace,
-      final AccumuloOptions options) {
-    this(
-        DEFAULT_NUM_THREADS,
-        DEFAULT_TIMEOUT_MILLIS,
-        DEFAULT_BYTE_BUFFER_SIZE,
-        DEFAULT_AUTHORIZATION,
-        tableNamespace,
-        connector,
-        options);
+  public AccumuloOperations(AccumuloClient client, String tableNamespace, AccumuloOptions options) {
+    this(DEFAULT_NUM_THREADS, DEFAULT_TIMEOUT_MILLIS,
+         DEFAULT_BYTE_BUFFER_SIZE, DEFAULT_AUTHORIZATION,
+         tableNamespace, client, options);
   }
 
   /**
@@ -222,26 +220,21 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
    * @param byteBufferSize The buffer size in bytes to use for a batch writer
    * @param authorization The authorization to use for a batch scanner
    * @param tableNamespace An optional string that is prefixed to any of the table names
-   * @param connector The connector to use for all operations
+   * @param client The connector to use for all operations
    * @param options Options for the Accumulo data store
    */
-  public AccumuloOperations(
-      final int numThreads,
-      final long timeoutMillis,
-      final long byteBufferSize,
-      final String authorization,
-      final String tableNamespace,
-      final Connector connector,
-      final AccumuloOptions options) {
+  public AccumuloOperations(int numThreads, long timeoutMillis, long byteBufferSize,
+                            String authorization, String tableNamespace,
+                            AccumuloClient client, AccumuloOptions options) {
     this.numThreads = numThreads;
     this.timeoutMillis = timeoutMillis;
     this.byteBufferSize = byteBufferSize;
     this.authorization = authorization;
     this.tableNamespace = tableNamespace;
-    this.connector = connector;
+    this.client = client;
     this.options = options;
-    locGrpCache = new HashMap<>();
-    cacheTimeoutMillis = TimeUnit.DAYS.toMillis(1);
+    this.locGrpCache = new HashMap<>();
+    this.cacheTimeoutMillis = TimeUnit.DAYS.toMillis(1);
   }
 
   public int getNumThreads() {
@@ -256,8 +249,8 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
     return byteBufferSize;
   }
 
-  public Connector getConnector() {
-    return connector;
+  public AccumuloClient getClient() {
+    return this.client;
   }
 
   private String[] getAuthorizations(final String... additionalAuthorizations) {
@@ -281,11 +274,11 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
       final boolean enableBlockCache) {
     final String qName = getQualifiedTableName(tableName);
 
-    if (!connector.tableOperations().exists(qName)) {
+    if (!client.tableOperations().exists(qName)) {
       try {
         final NewTableConfiguration config = new NewTableConfiguration();
 
-        final Map<String, String> propMap = new HashMap(config.getProperties());
+        final Map<String, String> propMap = new HashMap<>(config.getProperties());
 
         if (enableBlockCache) {
           propMap.put(Property.TABLE_BLOCKCACHE_ENABLED.getKey(), "true");
@@ -293,7 +286,7 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
           config.setProperties(propMap);
         }
 
-        connector.tableOperations().create(qName, config);
+        client.tableOperations().create(qName, config);
 
         // Versioning is on by default; only need to detach
         if (!enableVersioning) {
@@ -314,7 +307,7 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
     try {
       rowIterator =
           new RowIterator(
-              connector.createScanner(
+              client.createScanner(
                   getQualifiedTableName(tableName),
                   (authorization == null) ? new Authorizations(additionalAuthorizations)
                       : new Authorizations(
@@ -332,7 +325,7 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
   public boolean deleteTable(final String tableName) {
     final String qName = getQualifiedTableName(tableName);
     try {
-      connector.tableOperations().delete(qName);
+      client.tableOperations().delete(qName);
       return true;
     } catch (final TableNotFoundException e) {
       LOGGER.warn("Unable to delete table, table not found '" + qName + "'", e);
@@ -352,15 +345,15 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
 
   /** */
   @Override
-  public void deleteAll() throws Exception {
-    SortedSet<String> tableNames = connector.tableOperations().list();
+  public void deleteAll() throws AccumuloSecurityException, AccumuloException, TableNotFoundException {
+    SortedSet<String> tableNames = client.tableOperations().list();
 
     if ((tableNamespace != null) && !tableNamespace.isEmpty()) {
       tableNames = tableNames.subSet(tableNamespace, tableNamespace + '\uffff');
     }
 
     for (final String tableName : tableNames) {
-      connector.tableOperations().delete(tableName);
+      client.tableOperations().delete(tableName);
     }
     DataAdapterAndIndexCache.getInstance(
         RowMergingAdapterOptionProvider.ROW_MERGING_ADAPTER_CACHE_ID,
@@ -379,7 +372,7 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
       final String... additionalAuthorizations) {
     return this.delete(
         tableName,
-        Arrays.asList(rowId),
+        Collections.singletonList(rowId),
         columnFamily,
         columnQualifier,
         additionalAuthorizations);
@@ -389,20 +382,14 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
       final String tableName,
       final String columnFamily,
       final String... additionalAuthorizations) {
-    BatchDeleter deleter = null;
-    try {
-      deleter = createBatchDeleter(tableName, additionalAuthorizations);
-      deleter.setRanges(Arrays.asList(new Range()));
+    try (BatchDeleter deleter = createBatchDeleter(tableName, additionalAuthorizations)) {
+      deleter.setRanges(Collections.singletonList(new Range()));
       deleter.fetchColumnFamily(new Text(columnFamily));
       deleter.delete();
       return true;
     } catch (final TableNotFoundException | MutationsRejectedException e) {
       LOGGER.warn("Unable to delete row from table [" + tableName + "].", e);
       return false;
-    } finally {
-      if (deleter != null) {
-        deleter.close();
-      }
     }
   }
 
@@ -414,9 +401,7 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
       final String... authorizations) {
 
     boolean success = true;
-    BatchDeleter deleter = null;
-    try {
-      deleter = createBatchDeleter(tableName, authorizations);
+    try (BatchDeleter deleter = createBatchDeleter(tableName, authorizations)) {
       if ((columnFamily != null) && !columnFamily.isEmpty()) {
         if ((columnQualifier != null) && (columnQualifier.length != 0)) {
           deleter.fetchColumn(new Text(columnFamily), new Text(columnQualifier));
@@ -432,10 +417,10 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
       }
       deleter.setRanges(rowRanges);
 
-      final Iterator<Map.Entry<Key, Value>> iterator = deleter.iterator();
-      while (iterator.hasNext()) {
-        final Entry<Key, Value> entry = iterator.next();
-        removeSet.remove(new ByteArray(entry.getKey().getRowData().getBackingArray()));
+      for (Entry<Key, Value> entry : deleter) {
+        removeSet.remove(new ByteArray(entry.getKey()
+                                            .getRowData()
+                                            .getBackingArray()));
       }
 
       if (removeSet.isEmpty()) {
@@ -444,17 +429,13 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
     } catch (final TableNotFoundException | MutationsRejectedException e) {
       LOGGER.warn("Unable to delete row from table [" + tableName + "].", e);
       success = false;
-    } finally {
-      if (deleter != null) {
-        deleter.close();
-      }
     }
 
     return success;
   }
 
   public boolean localityGroupExists(final String tableName, final String typeName)
-      throws AccumuloException, TableNotFoundException {
+          throws AccumuloException, TableNotFoundException {
     final String qName = getQualifiedTableName(tableName);
     final String localityGroupStr = qName + typeName;
 
@@ -469,8 +450,8 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
 
     // check accumulo to see if locality group exists
     final boolean groupExists =
-        connector.tableOperations().exists(qName)
-            && connector.tableOperations().getLocalityGroups(qName).keySet().contains(typeName);
+            client.tableOperations().exists(qName)
+            && client.tableOperations().getLocalityGroups(qName).keySet().contains(typeName);
 
     // update the cache
     if (groupExists) {
@@ -495,9 +476,9 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
     }
 
     // add locality group to accumulo and update the cache
-    if (connector.tableOperations().exists(qName)) {
+    if (client.tableOperations().exists(qName)) {
       final Map<String, Set<Text>> localityGroups =
-          connector.tableOperations().getLocalityGroups(qName);
+              client.tableOperations().getLocalityGroups(qName);
 
       final Set<Text> groupSet = new HashSet<>();
 
@@ -505,7 +486,7 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
 
       localityGroups.put(typeName, groupSet);
 
-      connector.tableOperations().setLocalityGroups(qName, localityGroups);
+      client.tableOperations().setLocalityGroups(qName, localityGroups);
 
       locGrpCache.put(localityGroupStr, new Date().getTime());
     }
@@ -532,13 +513,8 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
       scanner.setRange(
           AccumuloUtils.byteArrayRangeToAccumuloRange(new ByteArrayRange(startRow, endRow)));
       scanner.fetchColumnFamily(new Text(family));
-      return new CloseableIteratorWrapper(new Closeable() {
-        @Override
-        public void close() throws IOException {
-          scanner.close();
-        }
-      },
-          Streams.stream(scanner.iterator()).map(
+      return new CloseableIteratorWrapper(scanner::close,
+                                          Streams.stream(scanner.iterator()).map(
               entry -> DataIndexUtils.deserializeDataIndexRow(
                   entry.getKey().getRow().getBytes(),
                   adapterId,
@@ -561,13 +537,8 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
       scanner = createScanner(DataIndexUtils.DATA_ID_INDEX.getName(), additionalAuthorizations);
       scanner.setRange(new Range());
       scanner.fetchColumnFamily(new Text(family));
-      return new CloseableIteratorWrapper(new Closeable() {
-        @Override
-        public void close() throws IOException {
-          scanner.close();
-        }
-      },
-          Streams.stream(scanner).map(
+      return new CloseableIteratorWrapper(scanner::close,
+                                          Streams.stream(scanner).map(
               entry -> DataIndexUtils.deserializeDataIndexRow(
                   entry.getKey().getRow().getBytes(),
                   adapterId,
@@ -601,13 +572,8 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
           entry -> results.put(
               new ByteArray(entry.getKey().getRow().getBytes()),
               entry.getValue().get()));
-      return new CloseableIteratorWrapper(new Closeable() {
-        @Override
-        public void close() throws IOException {
-          batchScanner.close();
-        }
-      },
-          Arrays.stream(rows).filter(r -> results.containsKey(new ByteArray(r))).map(
+      return new CloseableIteratorWrapper(batchScanner::close,
+                                          Arrays.stream(rows).filter(r -> results.containsKey(new ByteArray(r))).map(
               r -> DataIndexUtils.deserializeDataIndexRow(
                   r,
                   adapterId,
@@ -624,10 +590,7 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
     return internalCreateWriter(
         DataIndexUtils.DATA_ID_INDEX,
         adapter,
-        (batchWriter, operations, tableName) -> new AccumuloDataIndexWriter(
-            batchWriter,
-            operations,
-            tableName));
+        AccumuloDataIndexWriter::new);
   }
 
   @Override
@@ -657,7 +620,7 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
 
   public Scanner createScanner(final String tableName, final String... additionalAuthorizations)
       throws TableNotFoundException {
-    return connector.createScanner(
+    return client.createScanner(
         getQualifiedTableName(tableName),
         new Authorizations(getAuthorizations(additionalAuthorizations)));
   }
@@ -665,7 +628,7 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
   public BatchScanner createBatchScanner(
       final String tableName,
       final String... additionalAuthorizations) throws TableNotFoundException {
-    return connector.createBatchScanner(
+    return client.createBatchScanner(
         getQualifiedTableName(tableName),
         new Authorizations(getAuthorizations(additionalAuthorizations)),
         numThreads);
@@ -675,7 +638,7 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
   public boolean ensureAuthorizations(final String clientUser, final String... authorizations) {
     String user;
     if (clientUser == null) {
-      user = connector.whoami();
+      user = client.whoami();
     } else {
       user = clientUser;
     }
@@ -694,7 +657,7 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
     }
     if (!unensuredAuths.isEmpty()) {
       try {
-        Authorizations auths = connector.securityOperations().getUserAuthorizations(user);
+        Authorizations auths = client.securityOperations().getUserAuthorizations(user);
         final List<byte[]> newSet = new ArrayList<>();
         for (final String auth : unensuredAuths) {
           if (!auths.contains(auth)) {
@@ -703,8 +666,8 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
         }
         if (newSet.size() > 0) {
           newSet.addAll(auths.getAuthorizations());
-          connector.securityOperations().changeUserAuthorizations(user, new Authorizations(newSet));
-          auths = connector.securityOperations().getUserAuthorizations(user);
+          client.securityOperations().changeUserAuthorizations(user, new Authorizations(newSet));
+          auths = client.securityOperations().getUserAuthorizations(user);
 
           LOGGER.trace(
               clientUser + " has authorizations " + ArrayUtils.toString(auths.getAuthorizations()));
@@ -716,7 +679,7 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
         LOGGER.error(
             "Unable to add authorizations '"
                 + Arrays.toString(unensuredAuths.toArray(new String[] {}))
-                + "'",
+                + '\'',
             e);
         return false;
       }
@@ -727,7 +690,7 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
   public BatchDeleter createBatchDeleter(
       final String tableName,
       final String... additionalAuthorizations) throws TableNotFoundException {
-    return connector.createBatchDeleter(
+    return client.createBatchDeleter(
         getQualifiedTableName(tableName),
         new Authorizations(getAuthorizations(additionalAuthorizations)),
         numThreads,
@@ -750,7 +713,7 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
       synchronized (ensuredPartitionCache) {
         if (existingPartitions == null) {
           Collection<Text> splits;
-          splits = connector.tableOperations().listSplits(qName);
+          splits = client.tableOperations().listSplits(qName);
           existingPartitions = new HashSet<>();
           for (final Text s : splits) {
             existingPartitions.add(new ByteArray(s.getBytes()));
@@ -760,7 +723,7 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
         if (!existingPartitions.contains(partition)) {
           final SortedSet<Text> partitionKeys = new TreeSet<>();
           partitionKeys.add(new Text(partition.getBytes()));
-          connector.tableOperations().addSplits(qName, partitionKeys);
+          client.tableOperations().addSplits(qName, partitionKeys);
           existingPartitions.add(partition);
         }
       }
@@ -778,13 +741,13 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
       final boolean enableBlockCache,
       final IteratorConfig... iterators) throws TableNotFoundException {
     final String qName = getQualifiedTableName(tableName);
-    if (createTable && !connector.tableOperations().exists(qName)) {
+    if (createTable && !client.tableOperations().exists(qName)) {
       createTable(tableName, enableVersioning, enableBlockCache);
     }
     try {
       if ((iterators != null) && (iterators.length > 0)) {
         final Map<String, EnumSet<IteratorScope>> iteratorScopes =
-            connector.tableOperations().listIterators(qName);
+                client.tableOperations().listIterators(qName);
         for (final IteratorConfig iteratorConfig : iterators) {
           boolean mustDelete = false;
           boolean exists = false;
@@ -825,7 +788,7 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
               while (it.hasNext()) {
                 final IteratorScope scope = it.next();
                 final IteratorSetting setting =
-                    connector.tableOperations().getIteratorSetting(
+                        client.tableOperations().getIteratorSetting(
                         qName,
                         iteratorConfig.getIteratorName(),
                         scope);
@@ -858,7 +821,7 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
             }
           }
           if (mustDelete) {
-            connector.tableOperations().removeIterator(
+            client.tableOperations().removeIterator(
                 qName,
                 iteratorConfig.getIteratorName(),
                 existingScopes);
@@ -868,7 +831,7 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
             if (configuredOptions == null) {
               configuredOptions = iteratorConfig.getOptions(new HashMap<String, String>());
             }
-            connector.tableOperations().attachIterator(
+            client.tableOperations().attachIterator(
                 qName,
                 new IteratorSetting(
                     iteratorConfig.getIteratorPriority(),
@@ -885,8 +848,7 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
     return true;
   }
 
-  public static AccumuloOperations createOperations(final AccumuloRequiredOptions options)
-      throws AccumuloException, AccumuloSecurityException {
+  public static AccumuloOperations createOperations(final AccumuloRequiredOptions options) {
     return new AccumuloOperations(
         options.getZookeeper(),
         options.getInstance(),
@@ -896,18 +858,15 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
         (AccumuloOptions) options.getStoreOptions());
   }
 
-  public static Connector getConnector(final AccumuloRequiredOptions options)
-      throws AccumuloException, AccumuloSecurityException {
-    return createOperations(options).connector;
+  public static AccumuloClient getConnector(final AccumuloRequiredOptions options) {
+    return createOperations(options).client;
   }
 
-  public static String getUsername(final AccumuloRequiredOptions options)
-      throws AccumuloException, AccumuloSecurityException {
+  public static String getUsername(final AccumuloRequiredOptions options) {
     return options.getUser();
   }
 
-  public static String getPassword(final AccumuloRequiredOptions options)
-      throws AccumuloException, AccumuloSecurityException {
+  public static String getPassword(final AccumuloRequiredOptions options) {
     return options.getPassword();
   }
 
@@ -916,21 +875,17 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
   }
 
   public String getUsername() {
-    return connector.whoami();
+    return client.whoami();
   }
 
   public String getPassword() {
     return password;
   }
 
-  public Instance getInstance() {
-    return connector.getInstance();
-  }
-
   @Override
-  public boolean indexExists(final String indexName) throws IOException {
+  public boolean indexExists(final String indexName) {
     final String qName = getQualifiedTableName(indexName);
-    return connector.tableOperations().exists(qName);
+    return client.tableOperations().exists(qName);
   }
 
   @Override
@@ -939,21 +894,14 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
       final String typeName,
       final Short adapterId,
       final String... additionalAuthorizations) {
-    BatchDeleter deleter = null;
-    try {
-      deleter = createBatchDeleter(indexName, additionalAuthorizations);
-
-      deleter.setRanges(Arrays.asList(new Range()));
+    try (BatchDeleter deleter = createBatchDeleter(indexName, additionalAuthorizations)) {
+      deleter.setRanges(Collections.singletonList(new Range()));
       deleter.fetchColumnFamily(new Text(ByteArrayUtils.shortToString(adapterId)));
       deleter.delete();
       return true;
     } catch (final TableNotFoundException | MutationsRejectedException e) {
       LOGGER.warn("Unable to delete row from table [" + indexName + "].", e);
       return false;
-    } finally {
-      if (deleter != null) {
-        deleter.close();
-      }
     }
   }
 
@@ -1041,7 +989,7 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
     return scanner;
   }
 
-  protected <T> void addConstraintsScanIteratorSettings(
+  protected void addConstraintsScanIteratorSettings(
       final RecordReaderParams params,
       final ScannerBase scanner,
       final DataStoreOptions options) {
@@ -1084,7 +1032,7 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
             ByteArrayUtils.byteArrayToString(
                 PersistenceUtils.toBinary(params.getAggregation().getLeft())));
       }
-      final Aggregation aggr = params.getAggregation().getRight();
+      final Aggregation<?, ?, ?> aggr = params.getAggregation().getRight();
       iteratorSettings.addOption(
           AggregationIterator.AGGREGATION_OPTION_NAME,
           ByteArrayUtils.byteArrayToString(PersistenceUtils.toClassId(aggr)));
@@ -1286,7 +1234,6 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
     return scanner;
   }
 
-  @SuppressWarnings("unchecked")
   @Override
   public RowReader<GeoWaveRow> createReader(final RecordReaderParams readerParams) {
     final ScannerBase scanner = getScanner(readerParams);
@@ -1358,7 +1305,7 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
     config.setMaxMemory(byteBufferSize);
     config.setMaxLatency(timeoutMillis, TimeUnit.MILLISECONDS);
     config.setMaxWriteThreads(numThreads);
-    return connector.createBatchWriter(qName, config);
+    return client.createBatchWriter(qName, config);
   }
 
   private boolean iteratorsAttached = false;
@@ -1439,7 +1386,7 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
     final String tableName = getQualifiedTableName(unqualifiedTableName);
     try {
       LOGGER.info("Compacting table '" + tableName + "'");
-      connector.tableOperations().compact(tableName, null, null, true, true);
+      client.tableOperations().compact(tableName, null, null, true, true);
       LOGGER.info("Successfully compacted table '" + tableName + "'");
     } catch (AccumuloSecurityException | TableNotFoundException | AccumuloException e) {
       LOGGER.error("Unable to merge data by compacting table '" + tableName + "'", e);
@@ -1454,12 +1401,12 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
       final String qName = getQualifiedTableName(tableName);
 
       if (enable) {
-        connector.tableOperations().attachIterator(
+        client.tableOperations().attachIterator(
             qName,
             new IteratorSetting(20, "vers", VersioningIterator.class.getName()),
             EnumSet.allOf(IteratorScope.class));
       } else {
-        connector.tableOperations().removeIterator(
+        client.tableOperations().removeIterator(
             qName,
             "vers",
             EnumSet.allOf(IteratorScope.class));
@@ -1468,9 +1415,9 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
   }
 
   public void setMaxVersions(final String tableName, final int maxVersions)
-      throws AccumuloException, TableNotFoundException, AccumuloSecurityException {
+      throws AccumuloException, AccumuloSecurityException {
     for (final IteratorScope iterScope : IteratorScope.values()) {
-      connector.tableOperations().setProperty(
+      client.tableOperations().setProperty(
           getQualifiedTableName(tableName),
           Property.TABLE_ITERATOR_PREFIX + iterScope.name() + ".vers.opt.maxVersions",
           Integer.toString(maxVersions));
@@ -1481,9 +1428,9 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
   public Map<String, ImmutableSet<ServerOpScope>> listServerOps(final String index) {
     try {
       return Maps.transformValues(
-          connector.tableOperations().listIterators(getQualifiedTableName(index)),
+          client.tableOperations().listIterators(getQualifiedTableName(index)),
           input -> Sets.immutableEnumSet(
-              (Iterable) Iterables.transform(input, i -> fromAccumulo(i))));
+              (Iterable) Iterables.transform(input, AccumuloOperations::fromAccumulo)));
     } catch (AccumuloSecurityException | AccumuloException | TableNotFoundException e) {
       LOGGER.error("Unable to list iterators for table '" + index + "'", e);
     }
@@ -1539,7 +1486,7 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
       final ServerOpScope scope) {
     try {
       final IteratorSetting setting =
-          connector.tableOperations().getIteratorSetting(
+          client.tableOperations().getIteratorSetting(
               getQualifiedTableName(index),
               serverOpName,
               toAccumulo(scope));
@@ -1559,7 +1506,7 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
       final ImmutableSet<ServerOpScope> scopes) {
 
     try {
-      connector.tableOperations().removeIterator(
+      client.tableOperations().removeIterator(
           getQualifiedTableName(index),
           serverOpName,
           toEnumSet(scopes));
@@ -1577,7 +1524,7 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
       final Map<String, String> properties,
       final ImmutableSet<ServerOpScope> configuredScopes) {
     try {
-      connector.tableOperations().attachIterator(
+      client.tableOperations().attachIterator(
           getQualifiedTableName(index),
           new IteratorSetting(priority, name, operationClass, properties),
           toEnumSet(configuredScopes));
@@ -1609,7 +1556,7 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
   @Override
   public boolean metadataExists(final MetadataType type) throws IOException {
     final String qName = getQualifiedTableName(AbstractGeoWavePersistence.METADATA_TABLE);
-    return connector.tableOperations().exists(qName);
+    return client.tableOperations().exists(qName);
   }
 
   @Override
@@ -1679,21 +1626,19 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
   }
 
   public void deleteRowsFromDataIndex(final byte[][] rows, final short adapterId) {
-    // to have backwards compatibility before 1.8.0 we can assume BaseScanner is autocloseable
-    BatchDeleter deleter = null;
-    try {
-      deleter = createBatchDeleter(DataIndexUtils.DATA_ID_INDEX.getName());
+    // TODO: document somewhere that GW requires Java >= 8, <= 11
+    // TODO: And menton API changes Connector => AccumuloClient somewhere!!!!
+    //       idk why im making these here...
+    try (BatchDeleter deleter = createBatchDeleter(DataIndexUtils.DATA_ID_INDEX.getName())) {
       deleter.fetchColumnFamily(new Text(ByteArrayUtils.shortToString(adapterId)));
       deleter.setRanges(
-          Arrays.stream(rows).map(r -> Range.exact(new Text(r))).collect(Collectors.toList()));
+              Arrays.stream(rows)
+                    .map(r -> Range.exact(new Text(r)))
+                    .collect(Collectors.toList()));
 
       deleter.delete();
     } catch (final TableNotFoundException | MutationsRejectedException e) {
       LOGGER.warn("Unable to delete from data index", e);
-    } finally {
-      if (deleter != null) {
-        deleter.close();
-      }
     }
   }
 }

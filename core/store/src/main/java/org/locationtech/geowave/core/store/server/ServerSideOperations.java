@@ -20,7 +20,7 @@ public interface ServerSideOperations extends DataStoreOperations {
    *
    * @return the mapping
    */
-  public Map<String, ImmutableSet<ServerOpScope>> listServerOps(String index);
+  public Map listServerOps(String index);
 
   /**
    * get the particular existing configured options for this server op at this scope

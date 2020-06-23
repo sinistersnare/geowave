@@ -18,6 +18,8 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.SortedSet;
 import java.util.TreeSet;
+
+import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
 import org.apache.accumulo.core.client.BatchScanner;
@@ -119,7 +121,7 @@ public class AccumuloUtils {
   /**
    * Get Namespaces
    */
-  public static List<String> getNamespaces(final Connector connector) {
+  public static List<String> getNamespaces(final AccumuloClient connector) {
     final List<String> namespaces = new ArrayList<>();
 
     for (final String table : connector.tableOperations().list()) {
@@ -135,7 +137,7 @@ public class AccumuloUtils {
    * Get list of data adapters associated with the given namespace
    */
   public static List<DataTypeAdapter<?>> getDataAdapters(
-      final Connector connector,
+      final AccumuloClient connector,
       final String namespace) {
     final List<DataTypeAdapter<?>> adapters = new ArrayList<>();
 
@@ -156,7 +158,7 @@ public class AccumuloUtils {
   /**
    * Get list of indices associated with the given namespace
    */
-  public static List<Index> getIndices(final Connector connector, final String namespace) {
+  public static List<Index> getIndices(final AccumuloClient connector, final String namespace) {
     final List<Index> indices = new ArrayList<>();
     final AccumuloOptions options = new AccumuloOptions();
     final IndexStore indexStore =
@@ -175,11 +177,10 @@ public class AccumuloUtils {
    * Set splits on a table based on a partition ID
    */
   public static void setSplitsByRandomPartitions(
-      final Connector connector,
+      final AccumuloClient connector,
       final String namespace,
       final Index index,
-      final int randomPartitions)
-      throws AccumuloException, AccumuloSecurityException, IOException, TableNotFoundException {
+      final int randomPartitions) {
     final AccumuloOperations operations =
         new AccumuloOperations(connector, namespace, new AccumuloOptions());
     final RoundRobinKeyIndexStrategy partitions = new RoundRobinKeyIndexStrategy(randomPartitions);
@@ -195,7 +196,7 @@ public class AccumuloUtils {
    */
   public static void setSplitsByQuantile(
       final BaseDataStore dataStore,
-      final Connector connector,
+      final AccumuloClient connector,
       final String namespace,
       final Index index,
       final int quantile)
@@ -232,7 +233,7 @@ public class AccumuloUtils {
    * Set splits on table based on equal interval distribution and fixed number of splits.
    */
   public static void setSplitsByNumSplits(
-      final Connector connector,
+      final AccumuloClient connector,
       final String namespace,
       final Index index,
       final int numSplits)
@@ -288,7 +289,7 @@ public class AccumuloUtils {
    * Set splits on table based on fixed number of rows per split.
    */
   public static void setSplitsByNumRows(
-      final Connector connector,
+      final AccumuloClient connector,
       final String namespace,
       final Index index,
       final long numberRows)
@@ -322,7 +323,7 @@ public class AccumuloUtils {
    * Check if locality group is set.
    */
   public static boolean isLocalityGroupSet(
-      final Connector connector,
+      final AccumuloClient connector,
       final String namespace,
       final Index index,
       final DataTypeAdapter<?> adapter)
@@ -337,7 +338,7 @@ public class AccumuloUtils {
    * Set locality group.
    */
   public static void setLocalityGroup(
-      final Connector connector,
+      final AccumuloClient connector,
       final String namespace,
       final Index index,
       final InternalDataAdapter<?> adapter)
@@ -352,7 +353,7 @@ public class AccumuloUtils {
    */
   public static long getEntries(
       final BaseDataStore dataStore,
-      final Connector connector,
+      final AccumuloClient connector,
       final String namespace,
       final Index index) throws AccumuloException, AccumuloSecurityException, IOException {
     long counter = 0L;
@@ -372,7 +373,7 @@ public class AccumuloUtils {
   }
 
   private static CloseableIterator<Entry<Key, Value>> getIterator(
-      final Connector connector,
+      final AccumuloClient connector,
       final String namespace,
       final Index index)
       throws AccumuloException, AccumuloSecurityException, IOException, TableNotFoundException {

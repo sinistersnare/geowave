@@ -9,9 +9,10 @@
 package org.locationtech.geowave.datastore.accumulo.cli;
 
 import java.io.IOException;
+
+import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.client.AccumuloSecurityException;
-import org.apache.accumulo.core.client.Connector;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.locationtech.geowave.core.cli.annotations.GeowaveOperation;
 import org.locationtech.geowave.core.cli.api.Command;
@@ -37,7 +38,7 @@ public class SplitQuantileCommand extends AbstractSplitsCommand implements Comma
 
       @Override
       protected boolean setSplits(
-          final Connector connector,
+          final AccumuloClient connector,
           final Index index,
           final String namespace,
           final long number) {
