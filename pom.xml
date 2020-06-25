@@ -350,6 +350,10 @@
 						<artifactId>jdk.tools</artifactId>
 						<groupId>jdk.tools</groupId>
 					</exclusion>
+					<exclusion>
+						<groupId>commons-beanutils</groupId>
+						<artifactId>commons-beanutils-core</artifactId>
+					</exclusion>
 				</exclusions>
 				<scope>${hbase.scope}</scope>
 			</dependency>
@@ -369,6 +373,12 @@
 				<artifactId>hbase-server</artifactId>
 				<version>${hbase.version}</version>
 				<scope>${hbase.scope}</scope>
+				<exclusions>
+					<exclusion>
+						<groupId>commons-beanutils</groupId>
+						<artifactId>commons-beanutils-core</artifactId>
+					</exclusion>
+				</exclusions>
 			</dependency>
 			<dependency>
 				<groupId>org.apache.hbase</groupId>
@@ -376,6 +386,12 @@
 				<version>${hbase.version}</version>
 				<type>test-jar</type>
 				<scope>${hbase.scope}</scope>
+				<exclusions>
+					<exclusion>
+						<groupId>commons-beanutils</groupId>
+						<artifactId>commons-beanutils-core</artifactId>
+					</exclusion>
+				</exclusions>
 			</dependency>
 			<dependency>
 				<groupId>org.apache.hbase</groupId>
@@ -440,6 +456,12 @@
 				<artifactId>hadoop-client</artifactId>
 				<version>${hadoop.version}</version>
 				<scope>${hadoop.scope}</scope>
+				<exclusions>
+					<exclusion>
+						<groupId>commons-beanutils</groupId>
+						<artifactId>commons-beanutils-core</artifactId>
+					</exclusion>
+				</exclusions>
 			</dependency>
 			<dependency>
 				<groupId>org.apache.hadoop</groupId>
@@ -894,6 +916,32 @@
 		</extensions>
 		<pluginManagement>
 			<plugins>
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-enforcer-plugin</artifactId>
+					<version>3.0.0-M3</version>
+					<executions>
+						<execution>
+							<id>enforce-banned-dependencies</id>
+							<goals>
+								<goal>enforce</goal>
+							</goals>
+							<configuration>
+								<rules>
+									<bannedDependencies>
+										<bannedDependencies>
+											<excludes>
+												<exclude>*:commons-beanutils-core</exclude>
+											</excludes>
+											<searchTransitive>true</searchTransitive>
+										</bannedDependencies>
+									</bannedDependencies>
+								</rules>
+								<fail>true</fail>
+							</configuration>
+						</execution>
+					</executions>
+				</plugin>
 				<!--This plugin's configuration is used to store Eclipse m2e settings
 					only. It has no influence on the Maven build itself. -->
 				<plugin>

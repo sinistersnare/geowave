@@ -1554,7 +1554,7 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
   }
 
   @Override
-  public boolean metadataExists(final MetadataType type) throws IOException {
+  public boolean metadataExists(final MetadataType type) {
     final String qName = getQualifiedTableName(AbstractGeoWavePersistence.METADATA_TABLE);
     return client.tableOperations().exists(qName);
   }

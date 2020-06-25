@@ -10,6 +10,7 @@ package org.locationtech.geowave.datastore.accumulo;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -53,7 +54,6 @@ import org.locationtech.geowave.core.store.api.Query;
 import org.locationtech.geowave.core.store.api.QueryBuilder;
 import org.locationtech.geowave.core.store.api.StatisticsQueryBuilder;
 import org.locationtech.geowave.core.store.api.Writer;
-import org.locationtech.geowave.core.store.base.BaseDataStore;
 import org.locationtech.geowave.core.store.callback.ScanCallback;
 import org.locationtech.geowave.core.store.data.PersistentDataset;
 import org.locationtech.geowave.core.store.data.PersistentValue;
@@ -108,29 +108,15 @@ public class AccumuloDataStoreStatsTest {
   }
 
   public static final VisibilityWriter<TestGeometry> visWriterAAA =
-          fieldId -> new FieldVisibilityHandler<TestGeometry, Object>() {
-            @Override
-            public byte[] getVisibility(
-                final TestGeometry rowValue,
-                final String fieldId,
-                final Object fieldValue) {
-              return "aaa".getBytes();
-            }
-          };
+          fieldId -> (FieldVisibilityHandler<TestGeometry, Object>)
+                  (rowValue, fieldId1, fieldValue) -> "aaa".getBytes();
 
   public static final VisibilityWriter<TestGeometry> visWriterBBB =
-          fieldId -> new FieldVisibilityHandler<TestGeometry, Object>() {
-            @Override
-            public byte[] getVisibility(
-                final TestGeometry rowValue,
-                final String fieldId,
-                final Object fieldValue) {
-              return "bbb".getBytes();
-            }
-          };
+          fieldId -> (FieldVisibilityHandler<TestGeometry, Object>)
+                  (rowValue, fieldId1, fieldValue) -> "bbb".getBytes();
 
   @Test
-  public void test() throws IOException {
+  public void test() {
     accumuloOptions.setPersistDataStatistics(true);
     runtest();
   }
@@ -248,17 +234,11 @@ public class AccumuloDataStoreStatsTest {
             && (bboxStats.getMaxY() == 32));
 
     final AtomicBoolean found = new AtomicBoolean(false);
-    ((BaseDataStore) mockDataStore).delete(
+    mockDataStore.delete(
         (Query) QueryBuilder.newBuilder().addTypeName(adapter.getTypeName()).indexName(
             index.getName()).setAuthorizations(new String[] {"aaa"}).constraints(
                 new DataIdQuery("test_pt_2".getBytes(StringUtils.getGeoWaveCharset()))).build(),
-        new ScanCallback<TestGeometry, GeoWaveRow>() {
-
-          @Override
-          public void entryScanned(final TestGeometry entry, final GeoWaveRow row) {
-            found.getAndSet(true);
-          }
-        });
+        (ScanCallback<TestGeometry, GeoWaveRow>) (entry, row) -> found.getAndSet(true));
     assertFalse(found.get());
 
     try (CloseableIterator<?> it1 =
@@ -350,27 +330,15 @@ public class AccumuloDataStoreStatsTest {
     found.set(false);
 
     assertTrue(
-        ((BaseDataStore) mockDataStore).delete(
+        mockDataStore.delete(
             (Query) QueryBuilder.newBuilder().addTypeName(adapter.getTypeName()).indexName(
                 index.getName()).setAuthorizations(new String[] {"aaa"}).build(),
-            new ScanCallback<TestGeometry, GeoWaveRow>() {
-
-              @Override
-              public void entryScanned(final TestGeometry entry, final GeoWaveRow row) {
-                found.getAndSet(true);
-              }
-            }));
+            (ScanCallback<TestGeometry, GeoWaveRow>) (entry, row) -> found.getAndSet(true)));
     assertTrue(
-        ((BaseDataStore) mockDataStore).delete(
+        mockDataStore.delete(
             (Query) QueryBuilder.newBuilder().addTypeName(adapter.getTypeName()).indexName(
                 index.getName()).setAuthorizations(new String[] {"bbb"}).build(),
-            new ScanCallback<TestGeometry, GeoWaveRow>() {
-
-              @Override
-              public void entryScanned(final TestGeometry entry, final GeoWaveRow row) {
-                found.getAndSet(true);
-              }
-            }));
+            (ScanCallback<TestGeometry, GeoWaveRow>) (entry, row) -> found.getAndSet(true)));
     try (CloseableIterator<?> it1 =
         mockDataStore.query(
             QueryBuilder.newBuilder().addTypeName(adapter.getTypeName()).indexName(
@@ -408,10 +376,10 @@ public class AccumuloDataStoreStatsTest {
             internalAdapterId,
             id.getExtendedId(),
             id.getType(),
-            new String[] {"bbb"})) {
+            "bbb")) {
       assertTrue(it.hasNext());
       histogramStats = (RowRangeHistogramStatistics<?>) it.next();
-      assertTrue(histogramStats != null);
+      assertNotNull(histogramStats);
     }
 
     statsStore.removeAllStatistics(internalAdapterId, "bbb");
@@ -426,7 +394,7 @@ public class AccumuloDataStoreStatsTest {
             internalAdapterId,
             id.getExtendedId(),
             id.getType(),
-            new String[] {"bbb"})) {
+            "bbb")) {
       assertFalse(it.hasNext());
     }
   }

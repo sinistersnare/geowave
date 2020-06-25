@@ -18,11 +18,15 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+
+import org.apache.accumulo.core.client.AccumuloClient;
 import org.apache.accumulo.core.client.AccumuloException;
 import org.apache.accumulo.core.client.TableNotFoundException;
 import org.apache.accumulo.core.client.security.tokens.PasswordToken;
+import org.apache.accumulo.core.clientImpl.ClientContext;
 import org.apache.accumulo.minicluster.MiniAccumuloCluster;
 import org.apache.commons.lang3.tuple.Pair;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.locationtech.geowave.core.geotime.index.SpatialDimensionalityTypeProvider;
@@ -67,37 +71,37 @@ import org.slf4j.LoggerFactory;
 public class AccumuloOptionsTest {
   private static final Logger LOGGER = LoggerFactory.getLogger(AccumuloOptionsTest.class);
 
-  final AccumuloOptions accumuloOptions = new AccumuloOptions();
-
-  final GeometryFactory factory = new GeometryFactory();
-
-  AccumuloOperations accumuloOperations;
-
-  IndexStore indexStore;
-
-  PersistentAdapterStore adapterStore;
-  InternalAdapterStore internalAdapterStore;
-
-  AccumuloDataStore mockDataStore;
+  private final AccumuloOptions accumuloOptions = new AccumuloOptions();
+  private final GeometryFactory factory = new GeometryFactory();
+  private AccumuloOperations accumuloOperations;
+  private IndexStore indexStore;
+  private PersistentAdapterStore adapterStore;
+  private InternalAdapterStore internalAdapterStore;
+  private AccumuloDataStore mockDataStore;
+  private AccumuloClient client;
 
   @Before
   public void setUp() throws IOException {
-    final AccumuloOptions options = new AccumuloOptions();
     Path accumuloDir = Files.createTempDirectory("accumulo");
-    final MiniAccumuloCluster client = new MiniAccumuloCluster(accumuloDir.toFile(), "");
-    accumuloOperations = new AccumuloOperations(client.createAccumuloClient("root", new PasswordToken(new byte[0])), options);
+    String password = "test";
+    final MiniAccumuloCluster testCluster = new MiniAccumuloCluster(accumuloDir.toFile(), password);
+    this.client = testCluster.createAccumuloClient("root", new PasswordToken(password.getBytes(StringUtils.getGeoWaveCharset())));
+    String zkAddr = ((ClientContext) client).getZooKeepers();
+    accumuloOperations = new AccumuloOperations(this.client, this.accumuloOptions);
 
     indexStore = new IndexStoreImpl(accumuloOperations, accumuloOptions);
-
     adapterStore = new AdapterStoreImpl(accumuloOperations, accumuloOptions);
-
     internalAdapterStore = new InternalAdapterStoreImpl(accumuloOperations);
+    mockDataStore = new AccumuloDataStore(accumuloOperations, accumuloOptions);
+  }
 
-    mockDataStore = new AccumuloDataStore(accumuloOperations, options);
+  @After
+  public void tearDown() {
+    this.client.close();
   }
 
   @Test
-  public void testIndexOptions() throws IOException {
+  public void testIndexOptions() {
 
     final Index index = new SpatialDimensionalityTypeProvider().createIndex(new SpatialOptions());
     final DataTypeAdapter<TestGeometry> adapter = new TestGeometryAdapter();
