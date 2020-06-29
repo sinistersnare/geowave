@@ -134,11 +134,11 @@ import com.google.common.collect.Streams;
  */
 public class AccumuloOperations implements MapReduceDataStoreOperations, ServerSideOperations {
   private static final Logger LOGGER = Logger.getLogger(AccumuloOperations.class);
-  private static final int DEFAULT_NUM_THREADS = 16;
-  private static final long DEFAULT_TIMEOUT_MILLIS = 1000L; // 1 second
-  private static final long DEFAULT_BYTE_BUFFER_SIZE = 1048576L; // 1 MB
-  private static final String DEFAULT_AUTHORIZATION = null;
-  private static final String DEFAULT_TABLE_NAMESPACE = "";
+  public static final int DEFAULT_NUM_THREADS = 16;
+  public static final long DEFAULT_TIMEOUT_MILLIS = 1000L; // 1 second
+  public static final long DEFAULT_BYTE_BUFFER_SIZE = 1048576L; // 1 MB
+  public static final String DEFAULT_AUTHORIZATION = null;
+  public static final String DEFAULT_TABLE_NAMESPACE = "";
   private final int numThreads;
   private final long timeoutMillis;
   private final long byteBufferSize;
@@ -152,6 +152,23 @@ public class AccumuloOperations implements MapReduceDataStoreOperations, ServerS
 
   private AccumuloClient client;
   private String password;
+
+  public AccumuloOperations(String zookeeperUrl, String instanceName,
+                            String userName, String authType, String authToken,
+                            String tableNamespace, AccumuloOptions options) {
+    this(DEFAULT_NUM_THREADS, DEFAULT_TIMEOUT_MILLIS, DEFAULT_BYTE_BUFFER_SIZE,
+         DEFAULT_AUTHORIZATION, tableNamespace, null, options);
+    Properties props = new Properties();
+    props.put("instance.name", instanceName);
+    props.put("instance.zookeepers", zookeeperUrl);
+    props.put("auth.principal", userName);
+    props.put("auth.type", authType);
+    props.put("auth.token", authToken);
+    this.client = Accumulo.newClient().from(props).build();
+    this.password = authToken;
+
+
+  }
 
   /**
    * This is will create an Accumulo connector based on passed in connection information and

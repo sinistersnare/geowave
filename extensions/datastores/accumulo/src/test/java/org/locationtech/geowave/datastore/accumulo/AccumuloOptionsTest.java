@@ -11,6 +11,8 @@ package org.locationtech.geowave.datastore.accumulo;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -81,14 +83,28 @@ public class AccumuloOptionsTest {
   private AccumuloClient client;
 
   @Before
-  public void setUp() throws IOException {
+  public void setUp() throws IOException, InterruptedException {
     Path accumuloDir = Files.createTempDirectory("accumulo");
+    System.out.println(accumuloDir);
+//    Path accumuloDir = new File("Users/davis/Desktop/acPath").toPath();
     String password = "test";
     final MiniAccumuloCluster testCluster = new MiniAccumuloCluster(accumuloDir.toFile(), password);
+    // TODO make testCluster an instance var so we can call stop()
+    testCluster.start();
     this.client = testCluster.createAccumuloClient("root", new PasswordToken(password.getBytes(StringUtils.getGeoWaveCharset())));
-    String zkAddr = ((ClientContext) client).getZooKeepers();
-    accumuloOperations = new AccumuloOperations(this.client, this.accumuloOptions);
-
+    accumuloOperations = new AccumuloOperations(testCluster.getZooKeepers(),
+                                                testCluster.getInstanceName(),
+                                                ((ClientContext) client).getPrincipal(),
+                                                "org.apache.accumulo.core.client.security.tokens.PasswordToken",
+                                                ((ClientContext) client).getAuthenticationToken().toString(),
+                                                "",
+                                                accumuloOptions);
+//    String zkAddr = ((ClientContext) client).getZooKeepers();
+//    // idk if this is actually the instance name. DELETE THIS LOL
+//    String instanceName = ((ClientContext) client).getInstanceName();
+//
+//    accumuloOperations = new AccumuloOperations(zkAddr, instanceName, "root", password,
+//                                                AccumuloOperations.DEFAULT_TABLE_NAMESPACE, this.accumuloOptions);
     indexStore = new IndexStoreImpl(accumuloOperations, accumuloOptions);
     adapterStore = new AdapterStoreImpl(accumuloOperations, accumuloOptions);
     internalAdapterStore = new InternalAdapterStoreImpl(accumuloOperations);
